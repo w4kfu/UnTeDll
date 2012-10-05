@@ -1,40 +1,27 @@
 #include "hook_stuff.h"
 
-extern HMODULE mod;
 extern struct pe_file pef;
+HMODULE mod;
 int initialized = 0;
-PVOID ExcptAddr = NULL;
 PVOID Handler;
+DWORD addr_noaccess = 0;
 
 BOOL (__stdcall *Resume_VirtualFree)(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType) = NULL;
 BOOL (__stdcall *Resume_VirtualProtect)(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) = NULL;
 
 unsigned long hookHandler(PEXCEPTION_POINTERS exc)
 {
-    DWORD OldProtect;
     DWORD oep;
     DWORD oldprotect;
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pPE;
 
-    if (exc->ExceptionRecord->ExceptionCode == STATUS_SINGLE_STEP)
-    {
-        /*if (ExcptAddr)
-        {
-            VirtualProtect((LPVOID)0x101BF000, 1, PAGE_READONLY, &OldProtect);
-            ExcptAddr = NULL;
-            return EXCEPTION_CONTINUE_EXECUTION;
-        }*/
-    }
-    else if (exc->ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION)
+    if (exc->ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION)
     {
         printf("Exception Address = %X\n", exc->ExceptionRecord->ExceptionAddress);
-        ExcptAddr = exc->ExceptionRecord->ExceptionAddress;
-        VirtualProtect((LPVOID)0x101BF000, 1, PAGE_EXECUTE_READWRITE, &OldProtect);
         printf("JUMP TO OEP !\n");
         oep = exc->ContextRecord->Ebx;
-        mod = (HMODULE)0x10000000;
-        printf("EBX = %X\n", exc->ContextRecord->Ebx);
+        mod = (HMODULE)ParsePE((HMODULE)pef.map, IMAGE_BASE);
         printf("MOD = %X\n", mod);
         printf("OEP = %X\n", oep);
         VirtualProtect(mod, pef.sect_align, 0x40, &oldprotect);
@@ -43,6 +30,7 @@ unsigned long hookHandler(PEXCEPTION_POINTERS exc)
         pPE = (PIMAGE_NT_HEADERS)(pDosHeader->e_lfanew + (BYTE *)mod);
         fix_imports(mod);
         pPE->OptionalHeader.AddressOfEntryPoint = oep;
+        printf("Dump and run ImportRec now\n");
         __asm
         {
             jmp $
@@ -78,7 +66,8 @@ BOOL __stdcall Hook_VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeTyp
     {
         initialized = 1;
         Handler = AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER)hookHandler);
-        VirtualProtect((LPVOID)0x101BF000, 1, PAGE_READONLY, &OldProtect);
+        addr_noaccess = (DWORD)ParsePE((HMODULE)pef.map, IMAGE_BASE) + (DWORD)get_last_section((HMODULE)pef.map);
+        VirtualProtect((LPVOID)addr_noaccess, 1, PAGE_READONLY, &OldProtect);
     }
 	return (Resume_VirtualFree(lpAddress, dwSize, dwFreeType));
 }

@@ -7,7 +7,6 @@ int openPE(char *name, struct pe_file *pef)
     pef->name = (char*)malloc(sizeof (char) * (strlen(name) + 1));
     if (!pef->name)
         return 0;
-    //strncpy_s(pef->name, strlen(name), name, strlen(name));
     strncpy(pef->name, name, strlen(name));
     pef->hfile = CreateFileA(name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
    	if (pef->hfile == INVALID_HANDLE_VALUE)
@@ -27,10 +26,9 @@ int openPE(char *name, struct pe_file *pef)
 		printf("[-] MapViewOfFile() failed\n");
 		return 0;
 	}
+	/* save usefull information */
 	pef->VirtualAddress_ls = get_last_section((HMODULE)pef->map);
-
     pef->sect_align = (DWORD)ParsePE((HMODULE)pef->map, SECTION_ALIGNMENT);
-    printf("Sect align = %X\n", pef->sect_align);
 	pef->saved_header = (char*)malloc(sizeof(char) * pef->sect_align);
     if (!pef->saved_header)
         return 0;
